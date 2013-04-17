@@ -121,7 +121,7 @@ const NOP           = 0xFF;
 const pipes0 = "\xE3\xF0\xF0\xF0\xF0";
 const pipes1 = "\xE2\xF0\xF0\xF0\xF0";
 
-local buff          = "1,2,3,4,5";
+local buff          = [1,2,3,4,5];				// Array of buffers
 
 // RF24 Library Functions 
 // Only used in one function, might removed it completely
@@ -163,7 +163,7 @@ class RF24 {
 
   constructor(clock)                    // RF24 Class - Constructor 
   {
-    /* Initialize Instance Variables */
+    // Initialize Instance Variables 
 
     rf_setup       = 0x6;               // Rate = 1Mbps, Power is Max
     channel        = 0x4c;              // CH  = 0x4c / 76
