@@ -3,7 +3,7 @@
  Electric Imp driver/library for the nRF24L01+                        
  Author: Stanley Seow                                         
  Email: stanleyseow@gmail.com
- Date : 14 Apr 2013
+ Date : 19 Apr 2013
  
  Version : 0.50 ( completed radio.sent() )
  Repo : https://github.com/stanleyseow/electricimp-nRF24L01
@@ -27,6 +27,17 @@
  Stanley
  
 */
+
+// DOCUMENTATION: PINOUT FOR IMP to nRF24L01
+// -----------------------------------------
+//  nRF24  |  Imp  | Function
+//  ---------------------------------------
+//  CE    ->   2   |  Control RX/TX
+//  CSN   ->   5   |  Chip select not
+//  SCK   ->   1   |  SPI Clock
+//  MOSI  ->   8   |  Master-out-slave-in
+//  MISO  ->   9   |  Master-in-slave-out
+
 
 // Memory Map 
 const CONFIG        = 0x00;
@@ -118,25 +129,11 @@ const REUSE_TX_PL   = 0xE3;
 const NOP           = 0xFF;
 
 // Pipe Addresses for RX & TX 
-const pipes0 = "\xE3\xF0\xF0\xF0\xF0";
+const pipes0 = "\xE1\xF0\xF0\xF0\xF0";
 const pipes1 = "\xE2\xF0\xF0\xF0\xF0";
 
-local buff          = [1,2,3,4,5];				// Array of buffers
 
-// RF24 Library Functions 
-// Only used in one function, might removed it completely
-// function _BV(x) { return (1<<(x)); }
-
-// DOCUMENTATION: PINOUT FOR IMP to nRF24L01
-//////////////////////////////////////////////////
-//  nRF24  |  Imp  | Function
-//  ---------------------------------------
-//  CE    ->   2   |  Controles RX/TX
-//  CSN   ->   5   |  Chip select not
-//  SCK   ->   1   |  SPI Clock
-//  MOSI  ->   8   |  Master-out-slave-in
-//  MISO  ->   9   |  Master-in-slave-out
-
+buffers <- [1,2,3,4,5];
 
 
 //********************************************************************************
@@ -145,11 +142,12 @@ local buff          = [1,2,3,4,5];				// Array of buffers
 
 class RF24 {
   /* Declare null variables */
-  ce_pin = null;
-  cs_pin = null;
-  so_pin = null;
+
   spiSetup_flags = null;
   spiSetup_clock = null;
+  ce = null;
+  cs = null;
+  myspi = null;
 
   rf_setup = null;
   channel = null;
@@ -163,7 +161,7 @@ class RF24 {
 
   constructor(clock)                    // RF24 Class - Constructor 
   {
-    // Initialize Instance Variables 
+    /* Initialize Instance Variables */
 
     rf_setup       = 0x6;               // Rate = 1Mbps, Power is Max
     channel        = 0x4c;              // CH  = 0x4c / 76
@@ -174,11 +172,14 @@ class RF24 {
     spiSetup_clock = clock;             // SPI Clock Speed = input
     txmode         = 1                  // Txmode
 
-    ce_pin = hardware.pin2;             // Chip Enable on pin2 - Active high (While RX)
-    cs_pin = hardware.pin5;             // Chip Select Not on pin5 - Active low (SPI)
-
-    cs_pin.configure(DIGITAL_OUT);    // CSN pin = digital out
-    ce_pin.configure(DIGITAL_OUT);    // CE pin = digital out
+    // Use the pin directly instead of a lookup
+    
+    ce = hardware.pin2;                // CE, active when HIGH
+    cs = hardware.pin5;                // CSN, active when LOW
+    myspi = hardware.spi189;           // Use SPI pin 1 - SCK, 8 - MOSI, 9 - MISO
+    
+    ce.configure(DIGITAL_OUT);          // CE Output pin 
+    cs.configure(DIGITAL_OUT);          // CS Output pin
     
   }
 
@@ -193,34 +194,49 @@ class RF24 {
 
     imp.sleep(0.05);                            // Delay for 5 ms
 
-    configRegister(SETUP_RETR,(0x5<<ARD)|(0xF<<ARC));                // Set 1500uS timeouts
+server.log("Set 1500us timeout");
+    configRegister(SETUP_RETR,(0x5<<ARD)|(0xF<<ARC));                // Set 1500uS timeout
+server.log("Reset Status");
     configRegister(STATUS,(1<<RX_DR)|(1<<TX_DS)|(1<<MAX_RT) ) ;     // Reset Status
+server.log("Setting RF_CH");
+    configRegister(RF_CH, channel);                     // Setting channel
+server.log("Setting RF_SETUP");    
+    configRegister(RF_SETUP,0x6);                       // 1Mbps data rate, Max power
+server.log("Setting ERX_P0");
+    configRegister(EN_RXADDR, 1<<ERX_P0);               // Enable Pipe0 RX
+server.log("Setting EN_CRC");
+    configRegister(CONFIG,1<<EN_CRC);                   // Enable CRC
+server.log("Setting CRC0");
+    configRegister(CONFIG,1<<CRC0);                     // CRC 16 bits
+    
+server.log("Setting Dynamic Payload");    
+    configRegister(FEATURE, 1<<EN_DPL);
+server.log("Enable All Pipes Dynamic Payload");     
+    configRegister( DYNPD, (1<<DPL_P0 | 1<<DPL_P1 | 1<<DPL_P2 | 1<<DPL_P3 | 1<<DPL_P4 | 1<<DPL_P5) ); 
 
-    server.log("set channel:" + channel);
-    configRegister(RF_CH, channel);
+server.log("Setting RX addr :" + pipes0);
+      writeRegister(RX_ADDR_P0, pipes0, 5);
     
-    server.log("set payloadsize:" + payloadSize);
-    configRegister(RX_PW_P0, payloadSize);
-    
-    server.log("set data rate & power: 0x06");
-    configRegister(RF_SETUP,0x6);                    // 1Mbps data rate, Max power
-
-    server.log("Setting RX addr :" + pipes0);
-    writeRegister(RX_ADDR_P0, pipes0, 5);
-    server.log("Setting TX addr :" + pipes1);
-    writeRegister(TX_ADDR, pipes1, 5);
-    
-    configRegister(EN_RXADDR, 1<<ERX_P0);
-    
-    server.log("Enable Dynamic Payload");    
-    configRegister( FEATURE, 1<<EN_DPL);
-    configRegister( DYNPD, 1<<DPL_P0 | 1<<DPL_P1 | 1<<DPL_P2 | 1<<DPL_P3 | 1<<DPL_P4 | 1<<DPL_P5 ); 
-    
+server.log("Setting TX addr :" + pipes1);    
+     writeRegister(TX_ADDR, pipes1, 5);
+     
     pmode = txmode;
     powerTX();
     
     flushRX();                                      // Flush RX buffer
     flushTX();                                      // Flush TX buffer
+    
+// Verify all the register are set correctly
+// 0x%2X is to print in hex
+server.log("RX_ADDR_P0 return :" + radio.readAddrRegister(RX_ADDR_P0) );
+server.log("TX_ADDR addr return :" + radio.readAddrRegister(TX_ADDR) );
+server.log("RF_CH       :" + format("0x%02X",readRegister(RF_CH) ) );
+server.log("RF_SETUP    :" + format("0x%02X",readRegister(RF_SETUP) ) );
+server.log("EN_CRC      :" + (readRegister(CONFIG) && 1<<EN_CRC ) );
+server.log("CRC0        :" + (readRegister(CONFIG) && 1<<CRC0) );
+server.log("ENRX_P0     :" + (readRegister(EN_RXADDR) && 1<<ERX_P0) );
+server.log("EN_DPL      :" + (readRegister(FEATURE) && 1<<EN_DPL) );
+server.log("DYNPD       :" + (readRegister(DYNPD) && (1<<DPL_P0 | 1<<DPL_P1 | 1<<DPL_P2 | 1<<DPL_P3 | 1<<DPL_P4 | 1<<DPL_P5) ) ); 
  
     }
  
@@ -231,7 +247,7 @@ class RF24 {
 
     function spiSetup() {           
         hardware.configure(SPI_189);
-        return hardware.spi189.configure( CLOCK_IDLE_LOW ,spiSetup_clock); // Return clock speed in Khz
+        return myspi.configure( MSB_FIRST | CLOCK_IDLE_LOW ,spiSetup_clock); // Return clock speed in Khz
     }
   
 /*----------------------------------------------------------------------------*/
@@ -241,39 +257,57 @@ class RF24 {
   function getStatus() { 
       
     SelectChip();                                          
-    hardware.spi189.write(format("%c",NOP));    // Send a NOP
-    local status = hardware.spi189.read(1);     // Get the status back
+    myspi.write(format("%c",NOP));    // Send a NOP
+    local status = myspi.read(1);     // Get the status back
     DeselectChip();  
     return status[0];                              // Return status
  }                
  
 /*----------------------------------------------------------------------------*/
-// send() Tested NOT YET
+// send() Tested NOT OK
 /*----------------------------------------------------------------------------*/
     function send(value, len) {
         
         local i=0;
         pmode = txmode;
         powerTX();
-
+        
+        configRegister(RX_PW_P0, len);                          // Set payloadsize to len
+//server.log("Payload size :" + format("0x%02X",readRegister(RX_PW_P0) ) );
         flushTX();
       
         SelectChip();
-        hardware.spi189.write(format("%c",W_TX_PAYLOAD));            // Write the address
-        local status = hardware.spi189.read(1);                      // Read status after write
+        myspi.write(format("%c",W_TX_PAYLOAD));               // Write the address
+        local status = myspi.read(1);                         // Read status after write
         
         while (len--) {
-            hardware.spi189.write(format("%c",value[i]) );
-server.log("Sending :" + value[i] ) ;      
+            myspi.write(format("%c",value[i]) );
+//server.log("Sending :" + value[i] ) ;      
 server.show("Sending :" + value[i]);
             i++;
         }
         DeselectChip();
         
         ChipEnable();                                               // start transmission
-        imp.sleep(0.015);                                           // wait 15 us
+        imp.sleep(0.020);                                           // wait 15 us
         ChipDisable();
         
+imp.sleep(0.1);                                                      // Added 100 msec for scope to see      
+    }
+ 
+
+/*----------------------------------------------------------------------------*/
+// dataReady() Tested NOT OK
+/*----------------------------------------------------------------------------*/
+    function dataReady(regAddr) {
+    
+    local address = ( R_REGISTER | ( REGISTER_MASK & STATUS) );
+    SelectChip();
+    myspi.write(format("%c",address) );
+    local status = myspi.read(1);                   // Read status after write
+    DeselectChip(); 
+     
+    return status & (1<<RX_DR);                     // Return 1 if data ready
     }
  
  
@@ -284,14 +318,14 @@ server.show("Sending :" + value[i]);
     function configRegister(regAddr, data) { 
         
         local address = ( W_REGISTER | ( REGISTER_MASK & regAddr ) )
-//server.log("configRegister address:" + address);             // address sent to SPI 
-//server.log("configRegister data:" + data);                   // data sent to SPI
+//server.log("configRegister address:" + format("0x%02X",address) );             // address sent to SPI 
+server.log("configRegister data:" + format("0x%02X",data) );                   // data sent to SPI
         SelectChip();                                           // Chip select
-        hardware.spi189.write(format("%c",address));            // Write the address
-        local status = hardware.spi189.read(1);                 // Read status after write
-        hardware.spi189.write(format("%c",data));               // Write the data
+        myspi.write(format("%c",address));            // Write the address
+        local status = myspi.read(1);                 // Read status after write
+        myspi.write(format("%c",data));               // Write the data
         DeselectChip();                                         // Chip deselect 
-//server.log("configRegister status :" + status[0] ) ;    
+//server.log("configRegister status :" + format("0x%02X",status[0] ) );    
         return status[0];        
     }
     
@@ -305,15 +339,39 @@ server.show("Sending :" + value[i]);
     local reg = ( R_REGISTER | ( regAddr & REGISTER_MASK) );    // Mask with R_REGISTER defines
 //server.log("ReadRegister :" + reg);                         // Register to read 
     SelectChip();                                               // Chip select
-    hardware.spi189.write( format("%c", reg) );                 // Reg to read with mask 
-    hardware.spi189.read(1);
-    hardware.spi189.write("\xFF");            
-    local result =  hardware.spi189.read(1);
+    myspi.write( format("%c", reg) );                 // Reg to read with mask 
+    myspi.read(1);
+    myspi.write("\xFF");            
+    local result =  myspi.read(1);                    // Read a single byte register
     DeselectChip();                                             // Chip deselect
 //server.log("ReadRegister status :" + result[0] ) ;
     return result[0];
 }
 
+/*----------------------------------------------------------------------------*/ 
+// readAddrRegister() test NOT OK yet
+/*----------------------------------------------------------------------------*/
+
+  function readAddrRegister(regAddr) {    
+      
+    local reg = ( R_REGISTER | ( regAddr & REGISTER_MASK) );        // Mask with R_REGISTER defines
+//server.log("ReadAddrRegister :" + reg);                               // Register to read 
+    SelectChip();                                                   // Chip select
+    myspi.write( format("%c", reg) );                     // Reg to read with mask 
+    myspi.read(1);
+    myspi.write("\xFF\xFF\xFF\xFF\xFF");                  // Send 5 dummy bytes      
+               
+    local nodeAddr = myspi.readstring(5); 
+
+//server.log("ReadAddrRegister return0 :" + format("0x%02X",nodeAddr[0] ) ) ;
+//server.log("ReadAddrRegister return1 :" + format("0x%02X",nodeAddr[1] ) );
+//server.log("ReadAddrRegister return2 :" + format("0x%02X",nodeAddr[2] ) );
+//server.log("ReadAddrRegister return3 :" + format("0x%02X",nodeAddr[3] ) );
+//server.log("ReadAddrRegister return4 :" + format("0x%02X",nodeAddr[4] ) );
+
+    DeselectChip();                                             // Chip deselect
+    return nodeAddr;
+}
 
  
 /*----------------------------------------------------------------------------*/ 
@@ -327,14 +385,26 @@ server.show("Sending :" + value[i]);
 //server.log("writeRegister address:" + address);             // address sent to SPI 
 //server.log("writeRegister data:" + data);                   // data sent to SPI
         SelectChip();                                           // Chip select
-        hardware.spi189.write(format("%c",address));            // Write the address
-        local status = hardware.spi189.read(1);                 // Read status after write
+        myspi.write(format("%c",address));            // Write the address
+        local status = myspi.read(1);                 // Read status after write
         
-        while (len--) {
-            hardware.spi189.write(format("%c",data[i]) );
-//server.log("writeRegister data :" + data[i] ) ; 
-        i++;
-        }
+//server.log("writeRegister input:" + format("0x%02X"data[0]));  
+//server.log("writeRegister input:" + format("0x%02X"data[1]));  
+//server.log("writeRegister input:" + format("0x%02X"data[2]));  
+//server.log("writeRegister input:" + format("0x%02X"data[3]));  
+//server.log("writeRegister input:" + format("0x%02X"data[4]));  
+
+//        myspi.write(format("%c",data[0]) );    
+//        myspi.write(format("%c",data[1]) );  
+//        myspi.write(format("%c",data[2]) );  
+//        myspi.write(format("%c",data[3]) );  
+//        myspi.write(format("%c",data[4]) );  
+        
+//        while (len--) {
+//            myspi.write(format("%c",data[i]) );
+//server.log("writeRegister data :" + format("0x%02X",data[i] ) ) ; 
+//        i++;
+//        }
 
         DeselectChip();                                         // Chip deselect 
 //server.log("writeRegister status:" + status[0]);    
@@ -345,11 +415,11 @@ server.show("Sending :" + value[i]);
 // csn / ce tested OK
 /*----------------------------------------------------------------------------*/
 
-    function SelectChip()   { cs_pin.write(0); }            // csn(0)
-    function DeselectChip() { cs_pin.write(1); }            // csn(1)
+    function SelectChip()   { cs.write(0); }            // csn(0)
+    function DeselectChip() { cs.write(1); }            // csn(1)
     
-    function ChipEnable()   { ce_pin.write(1); }            // ce(1)
-    function ChipDisable()  { ce_pin.write(0); }            // ce(0)
+    function ChipEnable()   { ce.write(1); }            // ce(1)
+    function ChipDisable()  { ce.write(0); }            // ce(0)
     
 
 
@@ -357,10 +427,10 @@ server.show("Sending :" + value[i]);
 // instructionByte() NOT Tested
 /*----------------------------------------------------------------------------*/
 
-    function instructByte(instruction) {                                              // Send instruction byte 
-        SelectChip();                                                                   // Chip select
-        local status = hardware.spi189.writeread(format("%c",instruction));            // Send instruction
-        DeselectChip();                                                                 // Chip deselect
+    function instructByte(instruction) {                                                 // Send instruction byte 
+        SelectChip();                                                                    // Chip select
+        local status = myspi.writeread(format("%c",instruction));                        // Send instruction
+        DeselectChip();                                                                  // Chip deselect
         return status[0];
     }
 
@@ -372,8 +442,8 @@ server.show("Sending :" + value[i]);
 
 /*----------------------------------------------------------------------------*/
 
-    function powerRX() { configRegister( CONFIG, 1<<EN_CRC | 1<<CRC0 | 1<<PWR_UP | 0<<PRIM_RX ); }
-    function powerTX() { configRegister( CONFIG, 1<<EN_CRC | 1<<CRC0 | 1<<PWR_UP | 1<<PRIM_RX ); }
+    function powerRX() { configRegister( CONFIG, (1<<PWR_UP | 0<<PRIM_RX) ); }
+    function powerTX() { configRegister( CONFIG, (1<<PWR_UP | 1<<PRIM_RX) ); }
   
 /*----------------------------------------------------------------------------*/
 // flushRX() Tested OK
@@ -406,15 +476,16 @@ server.show("Sending :" + value[i]);
     function watchdog() {
 
     // Do something here
-    radio.send(buff,5);
-    imp.wakeup(15, watchdog );                                             // Wakeup in 15 secs
+
+    radio.send(buffers,5);
+    imp.wakeup(10, watchdog );                                             // Wakeup in 10 secs
     server.log("Watchdog running...");
     }
     
     function showChannel()
     {
         local channel = radio.readRegister(RF_CH);
-        server.show("RF24 channel:" + channel );
+        server.show("RF24 channel:" + format("0x%02X",channel) );
     }
 
 // Configure Imp 
