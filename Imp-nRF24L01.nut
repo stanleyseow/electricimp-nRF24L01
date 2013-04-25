@@ -3,9 +3,9 @@
  Electric Imp driver/library for the nRF24L01+                        
  Author: Stanley Seow                                         
  Email: stanleyseow@gmail.com
- Date : 19 Apr 2013
+ Last update : 20 Apr 2013
  
- Version : 0.50 ( completed radio.sent() )
+
  Repo : https://github.com/stanleyseow/electricimp-nRF24L01
  
  Desc : This driver uses mostly mirf libraries functions as
@@ -17,14 +17,16 @@
  https://github.com/sbolel/nrf24_imp but 
  I totally re-wrote most of the functions.
  
- I do not use much of the OOP as I am still
- not very familier with OOP stuff yet.
- 
  I will put up as much debugging output as possible
  but these output display can be turn off during
  production
  
  Stanley
+
+ Version : 0.50 ( completed radio.sent() )
+ Revisions :-
+ 
+ 20 Apr 2013 - Fixed SPI return address 
  
 */
 
@@ -129,9 +131,8 @@ const REUSE_TX_PL   = 0xE3;
 const NOP           = 0xFF;
 
 // Pipe Addresses for RX & TX 
-const pipes0 = "\xE1\xF0\xF0\xF0\xF0";
-const pipes1 = "\xE2\xF0\xF0\xF0\xF0";
-
+const pipes0 = "\xE1\xF0\xF0\xF0\xF0"; // RX_ADDR
+const pipes1 = "\xE2\xF0\xF0\xF0\xF0"; // TX_ADDR
 
 buffers <- [1,2,3,4,5];
 
@@ -190,9 +191,13 @@ class RF24 {
     function initConfig() {
      
     DeselectChip();                             // Default value for CSN, HIGH
-    ChipDisable();                              // Default value for CE, LOW
-
+    ChipEnable();                              // Default value for CE, HIGH = RX mode
+    
+    powerDN();
     imp.sleep(0.05);                            // Delay for 5 ms
+    powerUP();
+
+    
 
 server.log("Set 1500us timeout");
     configRegister(SETUP_RETR,(0x5<<ARD)|(0xF<<ARC));                // Set 1500uS timeout
@@ -214,22 +219,27 @@ server.log("Setting Dynamic Payload");
 server.log("Enable All Pipes Dynamic Payload");     
     configRegister( DYNPD, (1<<DPL_P0 | 1<<DPL_P1 | 1<<DPL_P2 | 1<<DPL_P3 | 1<<DPL_P4 | 1<<DPL_P5) ); 
 
-server.log("Setting RX addr :" + pipes0);
-      writeRegister(RX_ADDR_P0, pipes0, 5);
-    
-server.log("Setting TX addr :" + pipes1);    
+server.log("Setting TX_ADDR :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipes1[0],pipes1[1],pipes1[2],pipes1[3],pipes1[4]) );    
      writeRegister(TX_ADDR, pipes1, 5);
      
-    pmode = txmode;
-    powerTX();
-    
-    flushRX();                                      // Flush RX buffer
-    flushTX();                                      // Flush TX buffer
+server.log("Setting RX_ADDR_P0 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipes1[0],pipes1[1],pipes1[2],pipes1[3],pipes1[4]) );               // RX_ADDR_P0 must be set same as TX_ADDR for Auto-ACK to work
+      writeRegister(RX_ADDR_P0, pipes1, 5);
+     
+server.log("Setting RX_ADDR_P1 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipes0[0],pipes0[1],pipes0[2],pipes0[3],pipes0[4]));    
+     writeRegister(RX_ADDR_P1, pipes0, 5);
+   
+    configRegister(RX_PW_P0, payloadSize);
+	configRegister(RX_PW_P1, payloadSize);
+
+
     
 // Verify all the register are set correctly
 // 0x%2X is to print in hex
-server.log("RX_ADDR_P0 return :" + radio.readAddrRegister(RX_ADDR_P0) );
-server.log("TX_ADDR addr return :" + radio.readAddrRegister(TX_ADDR) );
+local rx = radio.readAddrRegister(RX_ADDR_P1,5);
+local tx = radio.readAddrRegister(TX_ADDR,5);
+
+server.log("TX Addr     :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",tx[0],tx[1],tx[2],tx[3],tx[4]) );
+server.log("RX Addr     :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",rx[0],rx[1],rx[2],rx[3],rx[4]) );
 server.log("RF_CH       :" + format("0x%02X",readRegister(RF_CH) ) );
 server.log("RF_SETUP    :" + format("0x%02X",readRegister(RF_SETUP) ) );
 server.log("EN_CRC      :" + (readRegister(CONFIG) && 1<<EN_CRC ) );
@@ -238,6 +248,9 @@ server.log("ENRX_P0     :" + (readRegister(EN_RXADDR) && 1<<ERX_P0) );
 server.log("EN_DPL      :" + (readRegister(FEATURE) && 1<<EN_DPL) );
 server.log("DYNPD       :" + (readRegister(DYNPD) && (1<<DPL_P0 | 1<<DPL_P1 | 1<<DPL_P2 | 1<<DPL_P3 | 1<<DPL_P4 | 1<<DPL_P5) ) ); 
  
+    // Start receiver 
+    powerRX();
+    flushRX();
     }
  
  
@@ -270,6 +283,8 @@ server.log("DYNPD       :" + (readRegister(DYNPD) && (1<<DPL_P0 | 1<<DPL_P1 | 1<
         
         local i=0;
         pmode = txmode;
+        
+        ChipDisable();                                          // Change to TX mode
         powerTX();
         
         configRegister(RX_PW_P0, len);                          // Set payloadsize to len
@@ -288,11 +303,7 @@ server.show("Sending :" + value[i]);
         }
         DeselectChip();
         
-        ChipEnable();                                               // start transmission
-        imp.sleep(0.020);                                           // wait 15 us
-        ChipDisable();
-        
-imp.sleep(0.1);                                                      // Added 100 msec for scope to see      
+        ChipEnable();                                               // start transmission  
     }
  
 
@@ -319,7 +330,7 @@ imp.sleep(0.1);                                                      // Added 10
         
         local address = ( W_REGISTER | ( REGISTER_MASK & regAddr ) )
 //server.log("configRegister address:" + format("0x%02X",address) );             // address sent to SPI 
-server.log("configRegister data:" + format("0x%02X",data) );                   // data sent to SPI
+//server.log("configRegister data:" + format("0x%02X",data) );                   // data sent to SPI
         SelectChip();                                           // Chip select
         myspi.write(format("%c",address));            // Write the address
         local status = myspi.read(1);                 // Read status after write
@@ -352,23 +363,23 @@ server.log("configRegister data:" + format("0x%02X",data) );                   /
 // readAddrRegister() test NOT OK yet
 /*----------------------------------------------------------------------------*/
 
-  function readAddrRegister(regAddr) {    
-      
+  function readAddrRegister(regAddr,len) {    
+
+    local nodeAddr;
     local reg = ( R_REGISTER | ( regAddr & REGISTER_MASK) );        // Mask with R_REGISTER defines
 //server.log("ReadAddrRegister :" + reg);                               // Register to read 
     SelectChip();                                                   // Chip select
     myspi.write( format("%c", reg) );                     // Reg to read with mask 
-    myspi.read(1);
-    myspi.write("\xFF\xFF\xFF\xFF\xFF");                  // Send 5 dummy bytes      
-               
-    local nodeAddr = myspi.readstring(5); 
 
-//server.log("ReadAddrRegister return0 :" + format("0x%02X",nodeAddr[0] ) ) ;
-//server.log("ReadAddrRegister return1 :" + format("0x%02X",nodeAddr[1] ) );
-//server.log("ReadAddrRegister return2 :" + format("0x%02X",nodeAddr[2] ) );
-//server.log("ReadAddrRegister return3 :" + format("0x%02X",nodeAddr[3] ) );
-//server.log("ReadAddrRegister return4 :" + format("0x%02X",nodeAddr[4] ) );
+    nodeAddr = myspi.writeread("\xFF\xFF\xFF\xFF\xFF");                  // Send 5 dummy bytes & get nodeAddr
 
+/*
+server.log("ReadAddrRegister return0 :" + format("0x%02X",nodeAddr[0] ) ) ;
+server.log("ReadAddrRegister return1 :" + format("0x%02X",nodeAddr[1] ) );
+server.log("ReadAddrRegister return2 :" + format("0x%02X",nodeAddr[2] ) );
+server.log("ReadAddrRegister return3 :" + format("0x%02X",nodeAddr[3] ) );
+server.log("ReadAddrRegister return4 :" + format("0x%02X",nodeAddr[4] ) );
+*/
     DeselectChip();                                             // Chip deselect
     return nodeAddr;
 }
@@ -387,24 +398,15 @@ server.log("configRegister data:" + format("0x%02X",data) );                   /
         SelectChip();                                           // Chip select
         myspi.write(format("%c",address));            // Write the address
         local status = myspi.read(1);                 // Read status after write
-        
-//server.log("writeRegister input:" + format("0x%02X"data[0]));  
-//server.log("writeRegister input:" + format("0x%02X"data[1]));  
-//server.log("writeRegister input:" + format("0x%02X"data[2]));  
-//server.log("writeRegister input:" + format("0x%02X"data[3]));  
-//server.log("writeRegister input:" + format("0x%02X"data[4]));  
+    
+//    myspi.write("\xE1\xF0\xF0\xF0\xF0");                  // hardcode TX address for testing  
 
-//        myspi.write(format("%c",data[0]) );    
-//        myspi.write(format("%c",data[1]) );  
-//        myspi.write(format("%c",data[2]) );  
-//        myspi.write(format("%c",data[3]) );  
-//        myspi.write(format("%c",data[4]) );  
-        
-//        while (len--) {
-//            myspi.write(format("%c",data[i]) );
+        while (len--) {
+            myspi.write(format("%c",data[i]) );
 //server.log("writeRegister data :" + format("0x%02X",data[i] ) ) ; 
-//        i++;
-//        }
+            i++;
+        }
+
 
         DeselectChip();                                         // Chip deselect 
 //server.log("writeRegister status:" + status[0]);    
@@ -435,7 +437,7 @@ server.log("configRegister data:" + format("0x%02X",data) );                   /
     }
 
 /*----------------------------------------------------------------------------*/
-// powerDN() & powerUP() TestedOK
+// powerRX() & powerTX() TestedOK
 // EN_CRC - enable CRC
 // CRC0   - 0 = 8bit, 1 = 16bit
 // PWR_UP - 1 - power up, 0 power down
@@ -444,6 +446,9 @@ server.log("configRegister data:" + format("0x%02X",data) );                   /
 
     function powerRX() { configRegister( CONFIG, (1<<PWR_UP | 0<<PRIM_RX) ); }
     function powerTX() { configRegister( CONFIG, (1<<PWR_UP | 1<<PRIM_RX) ); }
+    function powerDN() { configRegister( CONFIG, (0<<PWR_UP) ); }
+    function powerUP() { configRegister( CONFIG, (1<<PWR_UP) ); }    
+    
   
 /*----------------------------------------------------------------------------*/
 // flushRX() Tested OK
@@ -474,11 +479,18 @@ server.log("configRegister data:" + format("0x%02X",data) );                   /
 /*----------------------------------------------------------------------------*/
 
     function watchdog() {
+        
+        local tx;
 
     // Do something here
-
-    radio.send(buffers,5);
-    imp.wakeup(10, watchdog );                                             // Wakeup in 10 secs
+    
+//server.log("Setting TX_ADDR :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipes1[0],pipes1[1],pipes1[2],pipes1[3],pipes1[4]) );    
+     radio.writeRegister(TX_ADDR, pipes1, 5);
+     tx = radio.readAddrRegister(TX_ADDR,5);
+//server.log("TX Addr return  :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",tx[0],tx[1],tx[2],tx[3],tx[4]) );
+     
+    radio.send(buffers,5 );
+    imp.wakeup(5, watchdog );                                             // Wakeup in 10 secs
     server.log("Watchdog running...");
     }
     
