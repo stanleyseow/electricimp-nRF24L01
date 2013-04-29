@@ -7,7 +7,16 @@ will communicate directly with my RF24 fork for both Arduino and Raspberry Pi.
 
 SETUP
 =====
-- Connect pins as per the inline docs
+
+//  nRF24  |  Imp  | Function
+//  ---------------------------------------
+//  CE    ->   2   |  Control RX/TX
+//  CSN   ->   5   |  Chip select not
+//  SCK   ->   1   |  SPI Clock
+//  MOSI  ->   8   |  Master-Out
+//  MISO  ->   9   |  Master-In
+
+- Connect pins as per above
 - Upload sketch to Arduino / RPi
 - You should see "01234" on the Serial Monitor or LCD
 
@@ -33,9 +42,9 @@ LINKS
 
 CONTACT
 =======
-Stanley Seow ( stanleyseow@gmail.com )
-My blog : arduino-for-beginners@blogspot.com
-MY Github repo : github.com/stanleyseow/
+- Stanley Seow ( stanleyseow@gmail.com )
+- My blog : arduino-for-beginners@blogspot.com
+- MY Github repo : github.com/stanleyseow/
 
 
 
