@@ -8,13 +8,11 @@ will communicate directly with my RF24 fork for both Arduino and Raspberry Pi.
 SETUP
 =====
 
-//  nRF24  |  Imp  | Function
-//  ---------------------------------------
-//  CE    ->   2   |  Control RX/TX
-//  CSN   ->   5   |  Chip select not
-//  SCK   ->   1   |  SPI Clock
-//  MOSI  ->   8   |  Master-Out
-//  MISO  ->   9   |  Master-In
+- nRF   CE  ->  Imp 2 / Control RX/TX
+- nRF  CSN  ->  Imp 5 / Chip select not
+- nRF  SCK  ->  Imp 1 / SPI Clock
+- nRF MOSI  ->  Imp 8 / Master-Out
+- nRF MISO  ->  Imp 9 / Master-In
 
 - Connect pins as per above
 - Upload sketch to Arduino / RPi
@@ -38,13 +36,15 @@ LINKS
 =====
 - RF24 https://github.com/stanleyseow/RF24
 - Electric Imp forum http://forums.electricimp.com/discussion/999/nordic-nrf24l01-for-the-electric-imp
+- My blog : http://arduino-for-beginners@blogspot.com
+- My Github repo : https://github.com/stanleyseow/
 
 
 CONTACT
 =======
 - Stanley Seow ( stanleyseow@gmail.com )
-- My blog : arduino-for-beginners@blogspot.com
-- MY Github repo : github.com/stanleyseow/
+
+
 
 
 
