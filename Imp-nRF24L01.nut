@@ -3,7 +3,7 @@
  Electric Imp driver/library for the nRF24L01+                        
  Author: Stanley Seow                                         
  Email: stanleyseow@gmail.com
- Last update : 20 Apr 2013
+ Last update : 08 May 2013
  
  Repo : https://github.com/stanleyseow/electricimp-nRF24L01
  
@@ -27,10 +27,10 @@
  
  20 Apr 2013 - Fixed SPI return address 
  29 Apr 2013 - radio.sent() working with RF24 ( nRF24_Arduino_as_hub ) in examples folder
+ 08 May 2013 - radio.getData working with RF24 ( nRF24_sendto_hub ) in examples folder
  
  Todo :-
- 
- - Receive data from other nRF nodes
+
  - Receive data from planner using InputPort class
  - TX/RX commands to Arduino
 
@@ -130,6 +130,7 @@ const EN_DYN_ACK    = 0;
 const R_REGISTER    = 0x00;
 const W_REGISTER    = 0x20;
 const REGISTER_MASK = 0x1F;
+const R_RX_PL_WID   = 0x60;
 const R_RX_PAYLOAD  = 0x61;
 const W_TX_PAYLOAD  = 0xA0;
 const FLUSH_TX      = 0xE1;
@@ -138,11 +139,34 @@ const REUSE_TX_PL   = 0xE3;
 const NOP           = 0xFF;
 
 // Pipe Addresses for RX & TX 
-const pipes0 = "\xE1\xF0\xF0\xF0\xF0"; // RX_ADDR
-const pipes1 = "\xE2\xF0\xF0\xF0\xF0"; // TX_ADDR
+const pipesRX = "\xE1\xF0\xF0\xF0\xF0"; // RX_ADDR
+const pipesTX = "\xE2\xF0\xF0\xF0\xF0"; // TX_ADDR
 
+local statusCounter = 0;
 buffers <- [48,49,50,51,52];
 
+class impeeIn extends InputPort {
+    name = "RF24In";
+    type = "number";
+    
+    function set (value) {
+        
+    //buffers = c;
+    }
+}
+
+class impeeOut extends OutputPort {
+    name = "RF24Out";
+    type = "number";
+    
+    function set (value) {
+        //
+    }
+    
+    
+}
+
+local impeeInput = impeeIn();  // assign impeeIn class to the impeeInput
 
 //********************************************************************************
 //    RF24 CLASS (nRF24L01 Transciever
@@ -221,14 +245,11 @@ server.log("Setting Dynamic Payload");
 server.log("Enable All Pipes Dynamic Payload");     
     configRegister( DYNPD, (1<<DPL_P0 | 1<<DPL_P1 | 1<<DPL_P2 | 1<<DPL_P3 | 1<<DPL_P4 | 1<<DPL_P5) ); 
 
-server.log("Setting TX_ADDR :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipes1[0],pipes1[1],pipes1[2],pipes1[3],pipes1[4]) );    
-     writeRegister(TX_ADDR, pipes1, 5);
-     
-server.log("Setting RX_ADDR_P0 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipes1[0],pipes1[1],pipes1[2],pipes1[3],pipes1[4]) );               // RX_ADDR_P0 must be set same as TX_ADDR for Auto-ACK to work
-      writeRegister(RX_ADDR_P0, pipes1, 5);
-     
-server.log("Setting RX_ADDR_P1 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipes0[0],pipes0[1],pipes0[2],pipes0[3],pipes0[4]));    
-     writeRegister(RX_ADDR_P1, pipes0, 5);
+server.log("Setting TX_ADDR :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesTX[0],pipesTX[1],pipesTX[2],pipesTX[3],pipesTX[4]) );    
+     writeRegister(TX_ADDR, pipesTX, 5);
+ 
+server.log("Setting RX_ADDR_P0 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesRX[0],pipesRX[1],pipesRX[2],pipesRX[3],pipesRX[4]));    
+     writeRegister(RX_ADDR_P0, pipesRX, 5);
    
     configRegister(RX_PW_P0, payloadSize);
 	configRegister(RX_PW_P1, payloadSize);
@@ -237,11 +258,11 @@ server.log("Setting RX_ADDR_P1 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",
     
 // Verify all the register are set correctly
 // 0x%2X is to print in hex
-local rx = radio.readAddrRegister(RX_ADDR_P1,5);
+local rx = radio.readAddrRegister(RX_ADDR_P0,5);
 local tx = radio.readAddrRegister(TX_ADDR,5);
 
 server.log("TX Addr     :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",tx[0],tx[1],tx[2],tx[3],tx[4]) );
-server.log("RX Addr     :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",rx[0],rx[1],rx[2],rx[3],rx[4]) );
+server.log("RX Addr-P0  :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",rx[0],rx[1],rx[2],rx[3],rx[4]) );
 server.log("RF_CH       :" + format("0x%02X",readRegister(RF_CH) ) );
 server.log("RF_SETUP    :" + format("0x%02X",readRegister(RF_SETUP) ) );
 server.log("EN_CRC      :" + (readRegister(CONFIG) & 1<<EN_CRC ) );
@@ -253,6 +274,8 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
     // Start receiver in RX mode
     powerRX();
     flushRX();
+    
+    imp.sleep(1);
     }
  
  
@@ -271,30 +294,87 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
 
   function getStatus() { 
       
-    SelectChip();                                          
-    local status = myspi.writeread(format("%c",NOP));    // Send a NOP
-    DeselectChip();  
-    return status[0];                              // Return status
+    local reg = ( R_REGISTER | ( STATUS & REGISTER_MASK) );    // Mask with R_REGISTER defines
+//server.log("STATUS read   :" + format("0x%02X",reg) );                         // Register to read 
+    SelectChip();                                               // Chip select
+    myspi.writeread( format("%c", reg) );                 // Reg to read with mask 
+    local result = myspi.writeread("\xFF");            
+    DeselectChip();                                             // Chip deselect
+server.log("STATUS result :" + format("0x%02X",result[0]) ) ;
+    if (result[0] == 0) { statusCounter++;}             // Check for zero return
+    return result[0];  
+
  }                
+
+/*----------------------------------------------------------------------------*/
+// rxFifoEmpty() Tested OK
+/*----------------------------------------------------------------------------*/
+    function rxFifoEmpty() {
+        local fifoStatus = readRegister(FIFO_STATUS);
+        return (fifoStatus & (1<<RX_EMPTY));            // Return true if RX FIFO is empty
+    }
+ 
+ 
+ 
+/*----------------------------------------------------------------------------*/
+// dataReady() Tested OK
+/*----------------------------------------------------------------------------*/
+    function dataReady() {
+       local status = getStatus(); 
+       local result = 0;
+       
+       if ( status & (1<<RX_DR) ) result = 1;
+       
+       result = !rxFifoEmpty();                                     // RX Fifo NOT Empty
+       
+       if ( status & (1<<TX_DS)) configRegister(STATUS,(1<<TX_DS) ); // Handle ack payload receipt
+       
+       return result;
+    }
  
 
 /*----------------------------------------------------------------------------*/
-// isSending() Tested NOT OK
+// isSending() Tested OK
 /*----------------------------------------------------------------------------*/
     function isSending() {
         if (ptx) {
             local status = getStatus(); 
-                if((status & ((1 << TX_DS)  | (1 << MAX_RT)))){
+                if( (status & (1<<TX_DS | 1<<MAX_RT) ) ){
 		            powerRX();
 		            return 0;
-	            }
-        
+	            }   
         return 1;    
         }
+    return 0;    
+    }
+
+ 
+/*----------------------------------------------------------------------------*/
+// getData() Tested OK
+/*----------------------------------------------------------------------------*/
+    function getData(len) {
+
+        SelectChip();
+      
+        myspi.write( format("%c",R_RX_PAYLOAD ) ); 
+        local data = myspi.readstring(len);
+        DeselectChip();
+//server.log("getData data :" + data ) ; 
+        configRegister(STATUS, (1<<RX_DR));     // Reset STATUS register
         
-        return 0;    
+        return data;
     }
  
+/*----------------------------------------------------------------------------*/
+// getDynamicPayload() Tested OK
+/*----------------------------------------------------------------------------*/
+    function getDynamicPayload() {
+        SelectChip();        
+        myspi.writeread( format("%c",R_RX_PL_WID) );                
+        local size = myspi.writeread("\xFF");       
+        DeselectChip();  
+        return size[0];                                     // Return first index of array
+    }
  
 /*----------------------------------------------------------------------------*/
 // send() Tested OK
@@ -325,7 +405,7 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
         while (len--) {
             myspi.write(format("%c",value[i]) );
 //server.log("Sending :" + value[i] ) ;      
-//server.show("Sending :" + value[i]);
+server.show("Sending :" + value[i]);
             i++;
         }
         DeselectChip();
@@ -336,20 +416,6 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
         
         ChipEnable();           // Start Tranmission    
             
-    }
- 
-
-/*----------------------------------------------------------------------------*/
-// dataReady() Tested NOT OK
-/*----------------------------------------------------------------------------*/
-    function dataReady(regAddr) {
-    
-    local address = ( R_REGISTER | ( REGISTER_MASK & STATUS) );
-    SelectChip();
-    local status = myspi.writeread(format("%c",address) );
-    DeselectChip(); 
-     
-    return status & (1<<RX_DR);                     // Return 1 if data ready
     }
  
  
@@ -381,14 +447,12 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
   function readRegister(regAddr) {    
       
     local reg = ( R_REGISTER | ( regAddr & REGISTER_MASK) );    // Mask with R_REGISTER defines
-//server.log("ReadRegister :" + reg);                         // Register to read 
+//server.log("ReadRegister reg    :" + format("0x%02X",reg) );                         // Register to read 
     SelectChip();                                               // Chip select
-    myspi.write( format("%c", reg) );                 // Reg to read with mask 
-    myspi.read(1);
-    myspi.write("\xFF");            
-    local result =  myspi.read(1);                    // Read a single byte register
+    myspi.writeread( format("%c", reg) );                 // Reg to read with mask 
+    local result = myspi.writeread("\xFF");            
     DeselectChip();                                             // Chip deselect
-//server.log("ReadRegister status :" + result[0] ) ;
+//server.log("ReadRegister result :" + format("0x%02X",result[0]) ) ;
     return result[0];
 }
 
@@ -400,11 +464,11 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
 
     local nodeAddr;
     local reg = ( R_REGISTER | ( regAddr & REGISTER_MASK) );        // Mask with R_REGISTER defines
-//server.log("ReadAddrRegister :" + reg);                               // Register to read 
+//server.log("readAddrRegister :" + reg);                               // Register to read 
     SelectChip();                                                   // Chip select
     myspi.write( format("%c", reg) );                     // Reg to read with mask 
 
-    nodeAddr = myspi.writeread("\xFF\xFF\xFF\xFF\xFF");                  // Send 5 dummy bytes & get nodeAddr
+    nodeAddr = myspi.readstring(len);                  // Send 5 dummy bytes & get nodeAddr
     DeselectChip();                                             // Chip deselect
     return nodeAddr;
 }
@@ -423,15 +487,12 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
         SelectChip();                                           // Chip select
         myspi.write(format("%c",address));            // Write the address
         local status = myspi.read(1);                 // Read status after write
-    
-//    myspi.write("\xE1\xF0\xF0\xF0\xF0");                  // hardcode TX address for testing  
 
         while (len--) {
             myspi.write(format("%c",data[i]) );
 //server.log("writeRegister data :" + format("0x%02X",data[i] ) ) ; 
             i++;
         }
-
 
         DeselectChip();                                         // Chip deselect 
 //server.log("writeRegister status:" + status[0]);    
@@ -473,7 +534,9 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
 
     function powerRX() { 
         ptx = 0;
+        ChipDisable();
         configRegister( CONFIG, (1<<EN_CRC | 1<<CRC0 | 1<<PWR_UP | 1<<PRIM_RX) ); 
+        ChipEnable();
         configRegister( STATUS, (1<< TX_DS) | (1<< MAX_RT)); 
     }
     
@@ -515,14 +578,59 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
 /*----------------------------------------------------------------------------*/
 
     function watchdog() {
+    
+    local i;
+    local payloadSize = 32;
+    local data;
+//server.log("Setting TX_ADDR :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesTX[0],pipesTX[1],pipesTX[2],pipesTX[3],pipesTX[4]) );    
+//     radio.writeRegister(TX_ADDR, pipesTX, 5);
      
-    radio.send(buffers,5 );
-    if ( radio.isSending() ) {
-        server.log("Sending...");   
-    }
-    imp.wakeup(5, watchdog );                                             // Wakeup in 10 secs
+//server.log("Setting RX_ADDR_P0 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesTX[0],pipesTX[1],pipesTX[2],pipesTX[3],pipesTX[4]) );               
+// RX_ADDR_P0 must be set same as TX_ADDR for Auto-ACK to work
+//      radio.writeRegister(RX_ADDR_P0, pipesTX, 5);
+    
+server.log("Sending...");    
+radio.send(buffers,5 ); 
+    
+//server.log("Setting RX_ADDR_P0 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesRX[0],pipesRX[1],pipesRX[2],pipesRX[3],pipesRX[4]));    
+//     radio.writeRegister(RX_ADDR_P0, pipesRX, 5); // Always RX on Pipe0
+     
+     radio.powerRX();
+     
+    if ( !radio.isSending() && radio.dataReady() ) {
+    
+        payloadSize = radio.getDynamicPayload();
+        if ( payloadSize > 0 && payloadSize < 33) {
+        data = radio.getData(payloadSize);
+server.log("Length                 :" + payloadSize)
+server.log("getData                :" + data)
+        statusCounter=0;        // Reset this counter, only reset nRF when 5 back to back zero encountered
+}
+        
+
+
+    } 
+    
+    
+    imp.wakeup(5, watchdog );                                     
     server.log("Watchdog running...");
+    
+
+    
+    if ( statusCounter == 5 ) {     // Reset radio after five back to back zero STATUS received
+        
+        radio.powerDN; 
+        imp.sleep(1); 
+server.log("****** Resetting radio ********")        
+        radio.powerUP; 
+        radio.initConfig();
+        statusCounter=0;
+        
     }
+    
+    }
+    
+    
     
     function showChannel()
     {
@@ -532,7 +640,7 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
 
 // Configure Imp 
 server.log(" *** nRF24L01 for Imp *** ");
-imp.configure("Imp RF24", [], []);
+imp.configure("Imp RF24", [impeeIn], []);
 
 // Create the Radio Object 
 radio <- RF24(100);
