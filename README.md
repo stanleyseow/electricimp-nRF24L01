@@ -21,24 +21,15 @@ SETUP
 
 KNOWN ISSUES
 ============
-<<<<<<< HEAD
 - Currently working for TX only
 - RX have not been written yet ( *** )
-=======
-- Working for TX & RX
-- Not fully tested but it is working fine
->>>>>>> 69251443b8465721b80706442c99aa6e8e283349
 
 
 TODO
 ====
-<<<<<<< HEAD
 - RX functions
 - RX/RX commands to Arduino
-=======
-- InputPort to Planner ( waiting for agent codes )
 - Send/receive commands to/from Arduino
->>>>>>> 69251443b8465721b80706442c99aa6e8e283349
 
 
 LINKS
