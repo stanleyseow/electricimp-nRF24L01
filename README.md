@@ -2,7 +2,7 @@ electricimp driver nRF24L01
 ===========================
 
 This is the nRF24L01 driver/library for the electric imp that are based on mirf and 
-will communicate directly with my RF24 fork for both Arduino and Raspberry Pi.
+will communicate directly with RF24 fork for both Arduino, attiny and Raspberry Pi.
 
 
 SETUP
@@ -21,14 +21,24 @@ SETUP
 
 KNOWN ISSUES
 ============
+<<<<<<< HEAD
 - Currently working for TX only
 - RX have not been written yet ( *** )
+=======
+- Working for TX & RX
+- Not fully tested but it is working fine
+>>>>>>> 69251443b8465721b80706442c99aa6e8e283349
 
 
 TODO
 ====
+<<<<<<< HEAD
 - RX functions
 - RX/RX commands to Arduino
+=======
+- InputPort to Planner ( waiting for agent codes )
+- Send/receive commands to/from Arduino
+>>>>>>> 69251443b8465721b80706442c99aa6e8e283349
 
 
 LINKS
