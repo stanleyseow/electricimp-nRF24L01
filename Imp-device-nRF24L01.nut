@@ -1,11 +1,16 @@
 /* 
  
+ README file
+ 
  Electric Imp driver/library for the nRF24L01+                        
  Author: Stanley Seow                                         
  Email: stanleyseow@gmail.com
  Last update : 08 May 2013
  
  Repo : https://github.com/stanleyseow/electricimp-nRF24L01
+ 
+ Works with Arduino/Raspberry Pi nRF24L01+ libs/repo at :-
+ https://github.com/stanleyseow/RF24
  
  Desc : This driver uses mostly mirf libraries functions as
  it is much simpler to implement but will maintain compatibility
@@ -15,7 +20,8 @@
  Some of the initial structure was copied from 
  https://github.com/sbolel/nrf24_imp but 
  I re-wrote most of the functions based on
- mirf libraries.
+ mirf libraries as sbolel code was not working
+ as he just change the RF24 codes to imp without testing it
  
  I will put up as much debugging output as possible
  but these output display can be turn off during
@@ -28,12 +34,13 @@
  20 Apr 2013 - Fixed SPI return address 
  29 Apr 2013 - radio.sent() working with RF24 ( nRF24_Arduino_as_hub ) in examples folder
  08 May 2013 - radio.getData working with RF24 ( nRF24_sendto_hub ) in examples folder
+ 19 June 2013 - Adding coding for agents in beta
  
  Todo :-
 
- - Receive data from planner using InputPort class
- - TX/RX commands to Arduino
-
+ -  Make this IMP/nRF24L01 code act as a wireless bridge ( wifi/nRF24L01 ) 
+    from the cloud to atmel MCU at the end nodes
+ -  Comms to agents (beta)
  
 */
 
@@ -139,34 +146,12 @@ const REUSE_TX_PL   = 0xE3;
 const NOP           = 0xFF;
 
 // Pipe Addresses for RX & TX 
-const pipesRX = "\xE1\xF0\xF0\xF0\xF0"; // RX_ADDR
-const pipesTX = "\xE2\xF0\xF0\xF0\xF0"; // TX_ADDR
+// This is hub config, for node config is reverse
+const pipesRX = "\xE7\xDE\xDE\xDE\xDE"; // RX_ADDR from Pipe0
+const pipesTX = "\xE9\xDE\xDE\xDE\xDE"; // TX_ADDR to Pipe1
 
 local statusCounter = 0;
 buffers <- [48,49,50,51,52];
-
-class impeeIn extends InputPort {
-    name = "RF24In";
-    type = "number";
-    
-    function set (value) {
-        
-    //buffers = c;
-    }
-}
-
-class impeeOut extends OutputPort {
-    name = "RF24Out";
-    type = "number";
-    
-    function set (value) {
-        //
-    }
-    
-    
-}
-
-local impeeInput = impeeIn();  // assign impeeIn class to the impeeInput
 
 //********************************************************************************
 //    RF24 CLASS (nRF24L01 Transciever
@@ -195,8 +180,8 @@ class RF24 {
   {
     /* Initialize Instance Variables */
 
-    rf_setup       = 0x6;               // Rate = 1Mbps, Power is Max
-    channel        = 0x4c;              // CH  = 0x4c / 76
+    rf_setup       = 0x0f;               // Rate = 0x26 = 250Kbps, 0x0f = 2Mbps
+    channel        = 0x55;              // CH  = 0x4c / 76
     payloadSize    = 0x20;              // Max is 32 bytes / 0x20
     localAddress   = 0;                 // LA  = 0b0000 (Unimplemented)
     remoteAddress  = 0;                 // RA  = 0b0000 (Unimplemented)
@@ -218,6 +203,8 @@ class RF24 {
  
 /*----------------------------------------------------------------------------*/
 // initConfig() Tested OK
+// These are the initial config with all the debug output for checking
+// Can be disabled during production 
 /*----------------------------------------------------------------------------*/
     function initConfig() {
      
@@ -228,48 +215,44 @@ class RF24 {
     imp.sleep(0.05);                            // Delay for 5 ms
     powerUP();
 
-    
-
-server.log("Set 1500us timeout");
+//server.log("Set 1500us timeout");
     configRegister(SETUP_RETR,(0x5<<ARD)|(0xF<<ARC));                // Set 1500uS timeout
-server.log("Reset Status");
+//server.log("Reset Status");
     configRegister(STATUS,(1<<RX_DR)|(1<<TX_DS)|(1<<MAX_RT) ) ;     // Reset Status
-server.log("Setting RF_CH");
+//server.log("Setting RF_CH");
     configRegister(RF_CH, channel);                     // Setting channel
-server.log("Setting RF_SETUP");    
-    configRegister(RF_SETUP,0x6);                       // 1Mbps data rate, Max power
-server.log("Setting ERX_P0");
+//server.log("Setting RF_SETUP");    
+    configRegister(RF_SETUP,rf_setup);                       // 1Mbps data rate, Max power
+//server.log("Setting ERX_P0");
     configRegister(EN_RXADDR, 1<<ERX_P0);               // Enable Pipe0 RX
-server.log("Setting Dynamic Payload");    
+//server.log("Setting Dynamic Payload");    
     configRegister(FEATURE, 1<<EN_DPL);
-server.log("Enable All Pipes Dynamic Payload");     
+//server.log("Enable All Pipes Dynamic Payload");     
     configRegister( DYNPD, (1<<DPL_P0 | 1<<DPL_P1 | 1<<DPL_P2 | 1<<DPL_P3 | 1<<DPL_P4 | 1<<DPL_P5) ); 
 
-server.log("Setting TX_ADDR :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesTX[0],pipesTX[1],pipesTX[2],pipesTX[3],pipesTX[4]) );    
+//server.log("Setting TX_ADDR :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesTX[0],pipesTX[1],pipesTX[2],pipesTX[3],pipesTX[4]) );    
      writeRegister(TX_ADDR, pipesTX, 5);
  
-server.log("Setting RX_ADDR_P0 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesRX[0],pipesRX[1],pipesRX[2],pipesRX[3],pipesRX[4]));    
+//server.log("Setting RX_ADDR_P0 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesRX[0],pipesRX[1],pipesRX[2],pipesRX[3],pipesRX[4]));    
      writeRegister(RX_ADDR_P0, pipesRX, 5);
    
     configRegister(RX_PW_P0, payloadSize);
 	configRegister(RX_PW_P1, payloadSize);
 
-
-    
 // Verify all the register are set correctly
 // 0x%2X is to print in hex
 local rx = radio.readAddrRegister(RX_ADDR_P0,5);
 local tx = radio.readAddrRegister(TX_ADDR,5);
 
-server.log("TX Addr     :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",tx[0],tx[1],tx[2],tx[3],tx[4]) );
-server.log("RX Addr-P0  :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",rx[0],rx[1],rx[2],rx[3],rx[4]) );
+//server.log("TX Addr     :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",tx[0],tx[1],tx[2],tx[3],tx[4]) );
+//server.log("RX Addr-P0  :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",rx[0],rx[1],rx[2],rx[3],rx[4]) );
 server.log("RF_CH       :" + format("0x%02X",readRegister(RF_CH) ) );
 server.log("RF_SETUP    :" + format("0x%02X",readRegister(RF_SETUP) ) );
-server.log("EN_CRC      :" + (readRegister(CONFIG) & 1<<EN_CRC ) );
-server.log("CRC0        :" + (readRegister(CONFIG) & 1<<CRC0) );
-server.log("ENRX_P0     :" + (readRegister(EN_RXADDR) & 1<<ERX_P0) );
-server.log("EN_DPL      :" + (readRegister(FEATURE) & 1<<EN_DPL) );
-server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<DPL_P2 | 1<<DPL_P3 | 1<<DPL_P4 | 1<<DPL_P5) ) ); 
+//server.log("EN_CRC      :" + (readRegister(CONFIG) & 1<<EN_CRC ) );
+//server.log("CRC0        :" + (readRegister(CONFIG) & 1<<CRC0) );
+//server.log("ENRX_P0     :" + (readRegister(EN_RXADDR) & 1<<ERX_P0) );
+//server.log("EN_DPL      :" + (readRegister(FEATURE) & 1<<EN_DPL) );
+//server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<DPL_P2 | 1<<DPL_P3 | 1<<DPL_P4 | 1<<DPL_P5) ) ); 
  
     // Start receiver in RX mode
     powerRX();
@@ -277,10 +260,9 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
     
     imp.sleep(1);
     }
- 
- 
 /*----------------------------------------------------------------------------*/
 // spiSetup() Tested OK
+// One liner to setup SPI and return the clock speed in Khz
 /*----------------------------------------------------------------------------*/
 
     function spiSetup() {           
@@ -290,6 +272,7 @@ server.log("DYNPD       :" + (readRegister(DYNPD) & (1<<DPL_P0 | 1<<DPL_P1 | 1<<
   
 /*----------------------------------------------------------------------------*/
 // getStatus() Tested OK
+// Get current status of the radio, see STATUS register for details
 /*----------------------------------------------------------------------------*/  
 
   function getStatus() { 
@@ -308,16 +291,16 @@ server.log("STATUS result :" + format("0x%02X",result[0]) ) ;
 
 /*----------------------------------------------------------------------------*/
 // rxFifoEmpty() Tested OK
+// Check if the RX FIFO is empty, return TRUE
 /*----------------------------------------------------------------------------*/
     function rxFifoEmpty() {
         local fifoStatus = readRegister(FIFO_STATUS);
         return (fifoStatus & (1<<RX_EMPTY));            // Return true if RX FIFO is empty
     }
  
- 
- 
 /*----------------------------------------------------------------------------*/
 // dataReady() Tested OK
+// Return TRUE if data is ready to be received, RX_DR and RX FIFO not empty
 /*----------------------------------------------------------------------------*/
     function dataReady() {
        local status = getStatus(); 
@@ -331,10 +314,10 @@ server.log("STATUS result :" + format("0x%02X",result[0]) ) ;
        
        return result;
     }
- 
 
 /*----------------------------------------------------------------------------*/
 // isSending() Tested OK
+// Return TRUE while sending to radio
 /*----------------------------------------------------------------------------*/
     function isSending() {
         if (ptx) {
@@ -348,9 +331,9 @@ server.log("STATUS result :" + format("0x%02X",result[0]) ) ;
     return 0;    
     }
 
- 
 /*----------------------------------------------------------------------------*/
 // getData() Tested OK
+// Get payload from the radio
 /*----------------------------------------------------------------------------*/
     function getData(len) {
 
@@ -367,6 +350,7 @@ server.log("STATUS result :" + format("0x%02X",result[0]) ) ;
  
 /*----------------------------------------------------------------------------*/
 // getDynamicPayload() Tested OK
+// Added this function to support RF24 dynamic payloads
 /*----------------------------------------------------------------------------*/
     function getDynamicPayload() {
         SelectChip();        
@@ -385,14 +369,14 @@ server.log("STATUS result :" + format("0x%02X",result[0]) ) ;
         
         while (ptx) {
         local status = getStatus();
-	        if((status & ((1 << TX_DS)  | (1 << MAX_RT)))){
+	        if( (status & ((1 << TX_DS)|(1 << MAX_RT)) ) ){
 		        ptx = 0;
 		        break;
 	        }
-        } 
+        }  // Wait until last packet is sent
         
-        ChipDisable();                                          // Change to TX mode
-        powerTX();
+        ChipDisable();                                          
+        powerTX();                              // Change to TX mode
         
         configRegister(RX_PW_P0, len);     
         configRegister(RX_PW_P1, len);  
@@ -416,8 +400,8 @@ server.show("Sending :" + value[i]);
         
         ChipEnable();           // Start Tranmission    
             
+    return status[0];
     }
- 
  
 /*----------------------------------------------------------------------------*/
 // configRegister() Tested OK
@@ -438,7 +422,6 @@ server.show("Sending :" + value[i]);
 //server.log("Current CONFIG reg:" + format("0x%02X",readRegister(CONFIG )) );        
         return status[0];        
     }
-    
     
 /*----------------------------------------------------------------------------*/ 
 // readRegister() test OK 
@@ -473,7 +456,6 @@ server.show("Sending :" + value[i]);
     return nodeAddr;
 }
 
- 
 /*----------------------------------------------------------------------------*/ 
 // writeRegister() Tested OK 
 /*----------------------------------------------------------------------------*/
@@ -548,7 +530,6 @@ server.show("Sending :" + value[i]);
     function powerDN() { configRegister( CONFIG, (1<<EN_CRC | 1<<CRC0 | 0<<PWR_UP) ); }
     function powerUP() { configRegister( CONFIG, (1<<EN_CRC | 1<<CRC0 | 1<<PWR_UP) ); }    
     
-  
 /*----------------------------------------------------------------------------*/
 // flushRX() Tested OK
 /*----------------------------------------------------------------------------*/
@@ -559,7 +540,6 @@ server.show("Sending :" + value[i]);
         DeselectChip();
         return status;
     }             
-  
 /*----------------------------------------------------------------------------*/
 // flushTX Tested OK
 /*----------------------------------------------------------------------------*/  
@@ -588,9 +568,10 @@ server.show("Sending :" + value[i]);
 //server.log("Setting RX_ADDR_P0 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesTX[0],pipesTX[1],pipesTX[2],pipesTX[3],pipesTX[4]) );               
 // RX_ADDR_P0 must be set same as TX_ADDR for Auto-ACK to work
 //      radio.writeRegister(RX_ADDR_P0, pipesTX, 5);
-    
+
+// Uncomment to disable sent
 server.log("Sending...");    
-radio.send(buffers,5 ); 
+    radio.send(buffers,5 ); 
     
 //server.log("Setting RX_ADDR_P0 :" + format("0x%02X 0x%02X 0x%02X 0x%02X 0x%02X",pipesRX[0],pipesRX[1],pipesRX[2],pipesRX[3],pipesRX[4]));    
 //     radio.writeRegister(RX_ADDR_P0, pipesRX, 5); // Always RX on Pipe0
@@ -607,18 +588,10 @@ server.log("getData                :" + data)
         statusCounter=0;        // Reset this counter, only reset nRF when 5 back to back zero encountered
 }
         
-
-
-    } 
-    
-    
+    }     
     imp.wakeup(5, watchdog );                                     
-    server.log("Watchdog running...");
-    
-
-    
+    server.log("Watchdog running..."); 
     if ( statusCounter == 5 ) {     // Reset radio after five back to back zero STATUS received
-        
         radio.powerDN; 
         imp.sleep(1); 
 server.log("****** Resetting radio ********")        
@@ -630,31 +603,26 @@ server.log("****** Resetting radio ********")
     
     }
     
-    
-    
-    function showChannel()
-    {
-        local channel = radio.readRegister(RF_CH);
-        server.show("RF24 channel:" + format("0x%02X",channel) );
+    function watchdog2() {
+        agent.on("agentBuffers",function(value) {
+        server.log("Got a buffer from agent/http");
+        if ( value.len() < 33 ) {
+        radio.send(value,value.len());          // Send the payload to the radio
+        }
+    } );
+        radio.powerRX();
+        imp.wakeup(1, watchdog2 );    
     }
-
+    
 // Configure Imp 
 server.log(" *** nRF24L01 for Imp *** ");
-imp.configure("Imp RF24", [impeeIn], []);
+imp.configure("Imp RF24", [], []);
 
 // Create the Radio Object 
 radio <- RF24(100);
 server.log("RF24 Initialization Success " + radio + "");
-
 server.log("SPI Speed :" + radio.spiSetup() );   // Configure Imp SPI_189 communication, return clock in Khz
-
 radio.initConfig();                             // Confgigure the radio with channel, speed, CRC, etc
-
-showChannel();                                  // Show channel on planner
-
 imp.sleep(1);
-
-watchdog();                                     // My main loop, not sure this is the right way to implement this
-
-
+watchdog2();                                     // My main loop, not sure this is the right way to implement this
 // END
