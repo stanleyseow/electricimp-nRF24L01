@@ -21,15 +21,15 @@ SETUP
 
 KNOWN ISSUES
 ============
-- Currently working for TX only
-- RX have not been written yet ( *** )
+- No reported bugs at the moment
+- TX and RX working with RF24 libs examples ( https://github.com/stanleyseow/RF24/tree/master/examples )
 
 
 TODO
 ====
-- RX functions
-- RX/RX commands to Arduino
-- Send/receive commands to/from Arduino
+- nRF24L01 / wifi bridge
+- further improvements
+- see changes in the actual driver codes
 
 
 LINKS
