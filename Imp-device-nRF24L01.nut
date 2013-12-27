@@ -5,7 +5,7 @@
  Electric Imp driver/library for the nRF24L01+                        
  Author: Stanley Seow                                         
  Email: stanleyseow@gmail.com
- Last update : 08 May 2013
+ Last update : 27 Dec 2013
  
  Repo : https://github.com/stanleyseow/electricimp-nRF24L01
  
@@ -389,7 +389,7 @@ server.log("STATUS result :" + format("0x%02X",result[0]) ) ;
         while (len--) {
             myspi.write(format("%c",value[i]) );
 //server.log("Sending :" + value[i] ) ;      
-server.show("Sending :" + value[i]);
+server.log("Sending :" + value[i]);
             i++;
         }
         DeselectChip();
@@ -616,7 +616,7 @@ server.log("****** Resetting radio ********")
     
 // Configure Imp 
 server.log(" *** nRF24L01 for Imp *** ");
-imp.configure("Imp RF24", [], []);
+//imp.configure("Imp RF24", [], []);
 
 // Create the Radio Object 
 radio <- RF24(100);
